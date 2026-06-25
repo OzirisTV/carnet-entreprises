@@ -11,9 +11,15 @@
           "thursday": "",
           "friday": ""
         },
+        "closureException": {
+          "enabled": false,
+          "start": "",
+          "end": ""
+        },
+        "notes": "",
         "closedMonday": false,
         "closedFriday": false,
-        "open": true
+        "open": false
       }
     ],
     "NPXB": [],

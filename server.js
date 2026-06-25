@@ -1,14 +1,19 @@
 const http = require("node:http");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { createClient } = require("@supabase/supabase-js");
+let createClient = null;
+
+try {
+  ({ createClient } = require("@supabase/supabase-js"));
+} catch (error) {
+  createClient = null;
+}
 
 const ROOT_DIR = __dirname;
-
-const supabase = createClient(
-  "https://qqugqimhzileswjrqcju.supabase.co",
-  process.env.SUPABASE_KEY
-);
+const DATA_FILE = path.join(ROOT_DIR, "data.json");
+const supabase = process.env.SUPABASE_KEY && createClient
+  ? createClient("https://qqugqimhzileswjrqcju.supabase.co", process.env.SUPABASE_KEY)
+  : null;
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT || 3000);
 const ROUTES = Array.from({ length: 26 }, (_, index) => `NPX${String.fromCharCode(65 + index)}`);
@@ -87,6 +92,8 @@ async function serveStaticFile(pathname, response, headOnly) {
 }
 
 async function readSharedState() {
+  if (!supabase) return readLocalSharedState();
+
   const { data, error } = await supabase
     .from("shared_state")
     .select("data")
@@ -101,6 +108,11 @@ async function readSharedState() {
 async function writeSharedState(value) {
   const state = normalizeSharedState(value);
 
+  if (!supabase) {
+    await writeLocalSharedState(state);
+    return;
+  }
+
   const { error } = await supabase
     .from("shared_state")
     .upsert({
@@ -110,6 +122,24 @@ async function writeSharedState(value) {
     });
 
   if (error) throw error;
+}
+
+async function readLocalSharedState() {
+  try {
+    return normalizeSharedState(JSON.parse(await fs.readFile(DATA_FILE, "utf8")));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    const state = createDefaultSharedState();
+    await writeLocalSharedState(state);
+    return state;
+  }
+}
+
+async function writeLocalSharedState(value) {
+  const state = normalizeSharedState(value);
+  const tempFile = `${DATA_FILE}.tmp`;
+  await fs.writeFile(tempFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await fs.rename(tempFile, DATA_FILE);
 }
 
 function normalizeSharedState(value) {
@@ -127,6 +157,8 @@ function normalizeCompany(company) {
     id: String(company.id || createId()),
     name: normalizeCompanyName(company.name || ""),
     schedule: normalizeSchedule(company.schedule),
+    closureException: normalizeClosureException(company.closureException),
+    notes: String(company.notes || ""),
     closedMonday: Boolean(company.closedMonday),
     closedFriday: Boolean(company.closedFriday),
     open: Boolean(company.open)
@@ -148,6 +180,36 @@ function normalizeSchedule(schedule) {
   if (!schedule || typeof schedule !== "object") return createEmptySchedule();
 
   return Object.fromEntries(WEEK_DAYS.map((day) => [day.key, String(schedule[day.key] || "")]));
+}
+
+function createEmptyClosureException() {
+  return {
+    enabled: false,
+    start: "",
+    end: ""
+  };
+}
+
+function normalizeClosureException(value) {
+  if (!value || typeof value !== "object") return createEmptyClosureException();
+
+  return {
+    enabled: Boolean(value.enabled),
+    start: normalizeDateValue(value.start),
+    end: normalizeDateValue(value.end)
+  };
+}
+
+function normalizeDateValue(value) {
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+  const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return "";
+
+  const day = match[1].padStart(2, "0");
+  const month = match[2].padStart(2, "0");
+  return `${match[3]}-${month}-${day}`;
 }
 
 function createDefaultSharedState() {

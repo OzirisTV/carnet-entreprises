@@ -4,6 +4,7 @@
   const API_STATE_URL = "/api/state";
   const SHARED_SYNC_MS = 5000;
   const STATUS_REFRESH_MS = 60_000;
+  const CLOSING_ALERT_WINDOW_MINUTES = 30;
   const ROUTES = Array.from({ length: 26 }, (_, index) => `NPX${String.fromCharCode(65 + index)}`);
   const WEEK_DAYS = [
     { key: "monday", label: "Lundi" },
@@ -29,6 +30,8 @@
   const companyName = document.querySelector("#companyName");
   const searchInput = document.querySelector("#searchInput");
   const printButton = document.querySelector("#printButton");
+  const themeToggle = document.querySelector("#themeToggle");
+  const themeIcon = document.querySelector("#themeIcon");
   const printArea = document.querySelector("#printArea");
 
   let state = createDefaultState();
@@ -39,8 +42,11 @@
 
   async function init() {
     state = await loadState();
+    closeAllCompanies(state);
+    applyTheme(state.theme);
     renderTabs();
     renderCompanies();
+    updateThemeButton();
 
     if (sharedStorageEnabled) {
       window.setInterval(refreshSharedState, SHARED_SYNC_MS);
@@ -63,9 +69,11 @@
       id: createId(),
       name,
       schedule: createEmptySchedule(),
+      closureException: createEmptyClosureException(),
+      notes: "",
       closedMonday: false,
       closedFriday: false,
-      open: true
+      open: false
     };
 
     state.tabs[state.activeRoute].unshift(company);
@@ -120,6 +128,15 @@
     window.print();
   });
 
+  if (themeToggle) {
+    themeToggle.addEventListener("click", () => {
+      state.theme = state.theme === "dark" ? "light" : "dark";
+      applyTheme(state.theme);
+      updateThemeButton();
+      saveState();
+    });
+  }
+
   companyList.addEventListener("click", (event) => {
     const deleteButton = event.target.closest("[data-action='delete']");
     const toggleButton = event.target.closest("[data-action='toggle']");
@@ -159,7 +176,8 @@
   function handleCompanyField(event) {
     const field = event.target.dataset.field;
     const scheduleDay = event.target.dataset.scheduleDay;
-    if (!field && !scheduleDay) return;
+    const exceptionField = event.target.dataset.exceptionField;
+    if (!field && !scheduleDay && !exceptionField) return;
 
     const card = event.target.closest(".company-card");
     const route = card ? card.dataset.route || state.activeRoute : state.activeRoute;
@@ -170,6 +188,9 @@
     if (scheduleDay) {
       company.schedule = normalizeSchedule(company.schedule);
       company.schedule[scheduleDay] = value;
+    } else if (exceptionField) {
+      company.closureException = normalizeClosureException(company.closureException);
+      company.closureException[exceptionField] = value;
     } else if (field === "name") {
       company.name = normalizeCompanyName(value);
       event.target.value = uppercaseCompanyNameInput(value);
@@ -224,6 +245,8 @@
   function renderCompanyCard(company, route, searchActive) {
     const safeName = escapeHtml(company.name || "Sans nom");
     const schedule = normalizeSchedule(company.schedule);
+    const closureException = normalizeClosureException(company.closureException);
+    const safeNotes = escapeHtml(company.notes || "");
     const open = Boolean(company.open);
     const status = getTodayStatus(company);
     const styles = cardStyle(status.color);
@@ -234,6 +257,7 @@
           <button class="company-toggle" type="button" data-action="${searchActive ? "go" : "toggle"}" aria-expanded="${open}">
             <span class="company-swatch" aria-hidden="true"></span>
             <span class="company-title">${safeName}</span>
+            <span class="closing-alert-slot">${renderClosingAlert(status)}</span>
           </button>
           <div class="company-actions">
             <button class="light-button" type="button" data-action="${searchActive ? "go" : "toggle"}">${searchActive ? "Voir" : open ? "Fermer" : "Ouvrir"}</button>
@@ -244,6 +268,8 @@
           <div class="company-badges">
             ${searchActive ? `<span class="badge route">${escapeHtml(route)}</span>` : ""}
             <span class="badge ${statusBadgeClass(status)}">${escapeHtml(status.label)}</span>
+            ${renderClosingAlert(status)}
+            ${closureException.enabled ? `<span class="badge closed">Exception fermeture</span>` : ""}
             ${company.closedMonday ? `<span class="badge closed">Ferme lundi</span>` : ""}
             ${company.closedFriday ? `<span class="badge closed">Ferme vendredi</span>` : ""}
           </div>
@@ -277,6 +303,26 @@
               <span>Ferme vendredi</span>
             </label>
           </div>
+          <div class="exception-panel">
+            <label class="check-option">
+              <input type="checkbox" data-exception-field="enabled" ${closureException.enabled ? "checked" : ""}>
+              <span>Exception fermeture</span>
+            </label>
+            <div class="exception-dates">
+              <label>
+                <span>Du</span>
+                <input type="date" data-exception-field="start" value="${escapeHtml(closureException.start)}">
+              </label>
+              <label>
+                <span>Au</span>
+                <input type="date" data-exception-field="end" value="${escapeHtml(closureException.end)}">
+              </label>
+            </div>
+          </div>
+          <label>
+            <span>Notes</span>
+            <textarea data-field="notes" placeholder="Notes">${safeNotes}</textarea>
+          </label>
         </div>
       </article>
     `;
@@ -288,12 +334,16 @@
 
     const title = card.querySelector(".company-title");
     const badges = card.querySelector(".company-badges");
+    const alertSlot = card.querySelector(".closing-alert-slot");
 
     if (title) title.textContent = company.name || "Sans nom";
+    if (alertSlot) alertSlot.innerHTML = renderClosingAlert(status);
     if (badges) {
       badges.innerHTML = `
         ${card.dataset.route && activeRouteTitle.textContent === "Recherche" ? `<span class="badge route">${escapeHtml(card.dataset.route)}</span>` : ""}
         <span class="badge ${statusBadgeClass(status)}">${escapeHtml(status.label)}</span>
+        ${renderClosingAlert(status)}
+        ${normalizeClosureException(company.closureException).enabled ? `<span class="badge closed">Exception fermeture</span>` : ""}
         ${company.closedMonday ? `<span class="badge closed">Ferme lundi</span>` : ""}
         ${company.closedFriday ? `<span class="badge closed">Ferme vendredi</span>` : ""}
       `;
@@ -305,7 +355,17 @@
     const today = now.getDay();
     const todayKey = DAY_KEYS_BY_INDEX[today];
     const schedule = normalizeSchedule(company.schedule);
+    const closureException = normalizeClosureException(company.closureException);
     const hasAnySchedule = WEEK_DAYS.some((day) => schedule[day.key].trim());
+
+    if (isClosureExceptionActive(closureException, now)) {
+      return {
+        color: "#d40511",
+        closedToday: true,
+        label: "Exception fermeture",
+        tone: "closed"
+      };
+    }
 
     if ((today === 1 && company.closedMonday) || (today === 5 && company.closedFriday)) {
       return {
@@ -356,19 +416,32 @@
     }
 
     const currentMinutes = (now.getHours() * 60) + now.getMinutes();
-    const openNow = ranges.some(([start, end]) => isMinuteInRange(currentMinutes, start, end));
+    const activeRange = ranges.find(([start, end]) => isMinuteInRange(currentMinutes, start, end));
+    const openNow = Boolean(activeRange);
+    const warningMinutes = activeRange ? getClosingWarningMinutes(currentMinutes, activeRange[0], activeRange[1]) : 0;
 
     return {
       color: openNow ? "#15803d" : "#d40511",
       closedToday: !openNow,
       label: openNow ? "Ouvert maintenant" : "Ferme maintenant",
-      tone: openNow ? "open" : "closed"
+      tone: openNow ? "open" : "closed",
+      warningMinutes
     };
   }
 
   function statusBadgeClass(status) {
     if (status.tone === "neutral") return "neutral";
     return status.closedToday ? "closed" : "open";
+  }
+
+  function renderClosingAlert(status) {
+    if (!status.warningMinutes) return "";
+    return `
+      <span class="closing-alert" title="Ferme dans ${status.warningMinutes} minutes">
+        <span aria-hidden="true">⏰</span>
+        <span>${status.warningMinutes}</span>
+      </span>
+    `;
   }
 
   function formatCount(count) {
@@ -443,10 +516,14 @@
   function renderPrintCompany(company) {
     const status = getTodayStatus(company);
     const schedule = normalizeSchedule(company.schedule);
+    const closureException = normalizeClosureException(company.closureException);
     const closedDays = [
       company.closedMonday ? "Ferme lundi" : "",
       company.closedFriday ? "Ferme vendredi" : ""
     ].filter(Boolean).join(" - ");
+    const exceptionText = closureException.enabled
+      ? `${formatDateFr(closureException.start) || "date non renseignee"} au ${formatDateFr(closureException.end || closureException.start) || "date non renseignee"}`
+      : "Aucune";
 
     return `
       <div class="print-company">
@@ -455,6 +532,8 @@
           <span>${day.label} : ${escapeHtml(schedule[day.key] || "Non renseigne")}</span>
         `).join("")}
         <span>Fermeture : ${escapeHtml(closedDays || "Non renseignee")}</span>
+        <span>Exception fermeture : ${escapeHtml(exceptionText)}</span>
+        <span>Notes : ${escapeHtml(company.notes || "Aucune")}</span>
         <span>Aujourd'hui : ${escapeHtml(status.label)}</span>
       </div>
     `;
@@ -502,17 +581,20 @@
       const saved = JSON.parse(localStorage.getItem(UI_STORAGE_KEY));
       if (!saved || typeof saved !== "object") return {
         activeRoute: fallback.activeRoute,
-        search: fallback.search
+        search: fallback.search,
+        theme: fallback.theme
       };
 
       return {
         activeRoute: ROUTES.includes(saved.activeRoute) ? saved.activeRoute : fallback.activeRoute,
-        search: typeof saved.search === "string" ? saved.search : fallback.search
+        search: typeof saved.search === "string" ? saved.search : fallback.search,
+        theme: saved.theme === "dark" ? "dark" : fallback.theme
       };
     } catch (error) {
       return {
         activeRoute: fallback.activeRoute,
-        search: fallback.search
+        search: fallback.search,
+        theme: fallback.theme
       };
     }
   }
@@ -520,7 +602,8 @@
   function saveLocalUiState() {
     localStorage.setItem(UI_STORAGE_KEY, JSON.stringify({
       activeRoute: state.activeRoute,
-      search: state.search
+      search: state.search,
+      theme: state.theme
     }));
   }
 
@@ -547,7 +630,7 @@
 
     try {
       const remoteState = await fetchSharedState();
-      state.tabs = remoteState.tabs;
+      state.tabs = preserveOpenStates(remoteState.tabs);
       renderCompanies();
     } catch (error) {
       // Le serveur peut etre coupe temporairement; la saisie locale reste utilisable.
@@ -573,6 +656,7 @@
     return {
       activeRoute: ROUTES.includes(saved.activeRoute) ? saved.activeRoute : fallback.activeRoute,
       search: typeof saved.search === "string" ? saved.search : fallback.search,
+      theme: saved.theme === "dark" ? "dark" : fallback.theme,
       tabs: normalizeTabs(saved.tabs || fallback.tabs)
     };
   }
@@ -592,6 +676,7 @@
     return {
       activeRoute: "NPXA",
       search: "",
+      theme: "light",
       tabs: Object.fromEntries(ROUTES.map((route) => [route, []]))
     };
   }
@@ -601,6 +686,8 @@
       id: String(company.id || createId()),
       name: normalizeCompanyName(company.name || ""),
       schedule: normalizeSchedule(company.schedule),
+      closureException: normalizeClosureException(company.closureException),
+      notes: String(company.notes || ""),
       closedMonday: Boolean(company.closedMonday),
       closedFriday: Boolean(company.closedFriday),
       open: Boolean(company.open)
@@ -639,6 +726,106 @@
 
   function uppercaseCompanyNameInput(value) {
     return String(value || "").toLocaleUpperCase("fr-FR");
+  }
+
+  function closeAllCompanies(nextState) {
+    ROUTES.forEach((route) => {
+      (nextState.tabs[route] || []).forEach((company) => {
+        company.open = false;
+      });
+    });
+  }
+
+  function preserveOpenStates(remoteTabs) {
+    const openById = new Map();
+    getAllCompanies().forEach((item) => {
+      openById.set(item.company.id, Boolean(item.company.open));
+    });
+
+    return Object.fromEntries(ROUTES.map((route) => {
+      const companies = (remoteTabs[route] || []).map((company) => ({
+        ...company,
+        open: openById.get(company.id) || false
+      }));
+
+      return [route, companies];
+    }));
+  }
+
+  function applyTheme(theme) {
+    document.body.dataset.theme = theme === "dark" ? "dark" : "light";
+  }
+
+  function updateThemeButton() {
+    if (!themeToggle || !themeIcon) return;
+    const isDark = state.theme === "dark";
+    themeIcon.textContent = isDark ? "☾" : "☀";
+    themeToggle.title = isDark ? "Mode clair" : "Mode sombre";
+    themeToggle.setAttribute("aria-label", isDark ? "Passer en mode clair" : "Passer en mode sombre");
+  }
+
+  function createEmptyClosureException() {
+    return {
+      enabled: false,
+      start: "",
+      end: ""
+    };
+  }
+
+  function normalizeClosureException(value) {
+    if (!value || typeof value !== "object") return createEmptyClosureException();
+
+    return {
+      enabled: Boolean(value.enabled),
+      start: normalizeDateValue(value.start),
+      end: normalizeDateValue(value.end)
+    };
+  }
+
+  function normalizeDateValue(value) {
+    const text = String(value || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+    const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) return "";
+
+    const day = match[1].padStart(2, "0");
+    const month = match[2].padStart(2, "0");
+    return `${match[3]}-${month}-${day}`;
+  }
+
+  function isClosureExceptionActive(exception, date) {
+    if (!exception.enabled) return false;
+
+    const start = parseInputDate(exception.start);
+    const end = parseInputDate(exception.end || exception.start);
+    if (!start || !end) return false;
+
+    const today = startOfDay(date);
+    return today >= startOfDay(start) && today <= startOfDay(end);
+  }
+
+  function parseInputDate(value) {
+    const normalized = normalizeDateValue(value);
+    if (!normalized) return null;
+
+    const [year, month, day] = normalized.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  function startOfDay(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  function formatDateFr(value) {
+    const date = parseInputDate(value);
+    if (!date) return "";
+
+    return [
+      String(date.getDate()).padStart(2, "0"),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      date.getFullYear()
+    ].join("/");
   }
 
   function createEmptySchedule() {
@@ -681,6 +868,14 @@
   function isMinuteInRange(current, start, end) {
     if (start < end) return current >= start && current < end;
     return current >= start || current < end;
+  }
+
+  function getClosingWarningMinutes(current, start, end) {
+    let closeAt = end;
+    if (start > end && current >= start) closeAt += 1440;
+
+    const minutes = closeAt - current;
+    return minutes > 0 && minutes <= CLOSING_ALERT_WINDOW_MINUTES ? minutes : 0;
   }
 
   function normalizeSearch(value) {
