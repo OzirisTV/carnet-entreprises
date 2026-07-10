@@ -1,51 +1,71 @@
 {
-  "tabs": {
-    "NPXA": [
-      {
-        "id": "1781907685122-5a238aa82548a8",
-        "name": "JFKF",
-        "schedule": {
-          "monday": "",
-          "tuesday": "",
-          "wednesday": "",
-          "thursday": "",
-          "friday": ""
-        },
-        "closureException": {
-          "enabled": false,
-          "start": "",
-          "end": ""
-        },
-        "notes": "",
-        "closedMonday": false,
-        "closedFriday": false,
-        "open": false
-      }
-    ],
-    "NPXB": [],
-    "NPXC": [],
-    "NPXD": [],
-    "NPXE": [],
-    "NPXF": [],
-    "NPXG": [],
-    "NPXH": [],
-    "NPXI": [],
-    "NPXJ": [],
-    "NPXK": [],
-    "NPXL": [],
-    "NPXM": [],
-    "NPXN": [],
-    "NPXO": [],
-    "NPXP": [],
-    "NPXQ": [],
-    "NPXR": [],
-    "NPXS": [],
-    "NPXT": [],
-    "NPXU": [],
-    "NPXV": [],
-    "NPXW": [],
-    "NPXX": [],
-    "NPXY": [],
-    "NPXZ": []
-  }
+  "version": 2,
+  "directRoutes": [
+    {
+      "id": "419e46cc-4292-467b-89e1-a34b40d53ce0",
+      "name": "NPXA",
+      "companies": [
+        {
+          "id": "5ec1af47-4284-4e94-a333-5b9e6da02a8c",
+          "name": "JKJ",
+          "schedule": {
+            "monday": "09:00-06:15",
+            "tuesday": "09:00-06:15",
+            "wednesday": "09:00-06:15",
+            "thursday": "09:00-06:15",
+            "friday": "09:00-06:15"
+          },
+          "closureException": {
+            "enabled": false,
+            "start": "",
+            "end": ""
+          },
+          "notes": "",
+          "closedMonday": false,
+          "closedFriday": false,
+          "updatedAt": "2026-07-09T20:56:06.152Z",
+          "open": false
+        }
+      ]
+    }
+  ],
+  "agencies": [
+    {
+      "id": "d7c21ec7-77f7-46d3-bade-24e787f9aef9",
+      "name": "St Symphorien",
+      "passwordSalt": "d2ee709fe0f836a3386197888a780fb8",
+      "passwordHash": "692c94fd502f026b670d418ab66083375792f299fbb5e0a921f3e051038194c85e3023498a6d65eee87ff975d6bae48230668775ed41608c920f3579c44e3ef3",
+      "createdAt": "2026-07-07T19:34:47.550Z",
+      "routes": [
+        {
+          "id": "419e46cc-4292-467b-89e1-a34b40d53ce0",
+          "name": "NPXA",
+          "companies": [
+            {
+              "id": "5ec1af47-4284-4e94-a333-5b9e6da02a8c",
+              "name": "JKJ",
+              "schedule": {
+                "monday": "09:00-06:15",
+                "tuesday": "09:00-06:15",
+                "wednesday": "09:00-06:15",
+                "thursday": "09:00-06:15",
+                "friday": "09:00-06:15"
+              },
+              "closureException": {
+                "enabled": false,
+                "start": "",
+                "end": ""
+              },
+              "notes": "",
+              "closedMonday": false,
+              "closedFriday": false,
+              "updatedAt": "2026-07-09T20:56:06.152Z",
+              "open": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "legacyRoutes": []
 }
